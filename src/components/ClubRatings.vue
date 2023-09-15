@@ -2,14 +2,41 @@
   <div class="ratings-container">
     <h1>Club Ratings</h1>
     <Transition name="fade">
-      <!-- Display the table when data is loaded -->
-      <table class="ratings-table" v-if="showTable">
+      <table v-if="isLoading" class="ratings-table">
         <thead>
         <tr>
-          <th>#</th>
-          <th>Emblem</th>
-          <th>Name</th>
-          <th>From</th>
+          <th></th>
+          <th></th>
+          <th class="larger-cell"></th>
+          <th class="larger-cell">From</th>
+          <th>GP</th>
+          <th>W</th>
+          <th>D</th>
+          <th>L</th>
+          <th>GF</th>
+          <th>GA</th>
+          <th>GD</th>
+          <th>PT</th>
+        </tr>
+        </thead>
+        <tbody>
+        <!-- Loop through the clubs and limit the number of items displayed -->
+        <tr v-for="index in itemsToShow" :key="index">
+          <td v-for="(indx, cellIndex) in 12" :key="indx" :class="['skeleton-cell', { 'larger-cell': cellIndex === 2 || cellIndex === 3 }]">
+            <SkeletonCell />
+          </td>
+        </tr>
+        </tbody>
+      </table>
+
+      <!-- Display the table when data is loaded -->
+      <table v-else class="ratings-table">
+        <thead>
+        <tr>
+          <th></th>
+          <th></th>
+          <th class="larger-cell"></th>
+          <th class="larger-cell">From</th>
           <th>GP</th>
           <th>W</th>
           <th>D</th>
@@ -25,8 +52,23 @@
         <tr v-for="(club, index) in clubs.slice(0, itemsToShow)" :key="club.idTeam">
           <td>{{ index + 1 }}</td>
           <td><img :src="club.strTeamBadge" alt="Club Emblem" width="32" height="32" /></td>
-          <td>{{ club.strTeam }}</td>
-          <td>
+          <td class="larger-cell">
+             <span v-tooltip="tooltipConfig(club.idTeam)"
+                   @mouseover="isTooltipVisible = true"
+                   @mouseleave="isTooltipVisible = false"
+             >
+               {{ club.strTeam }}
+             </span>
+            <!-- Display the tooltip when isTooltipVisible is true -->
+            <div v-if="isTooltipVisible" class="tooltip">
+              <ul>
+                <li v-for="player in playersInTooltip" :key="player.idPlayer">
+                  {{ player.strPlayer }}
+                </li>
+              </ul>
+            </div>
+          </td>
+          <td class="larger-cell">
             <span v-for="(result, index) in club.strForm" :key="index">
               <i v-if="result === 'W'" class="fa fa-check-circle"></i>
               <i v-else-if="result === 'L'" class="fa fa-times-circle"></i>
@@ -42,31 +84,43 @@
           <td>{{ club.intGoalsFor - club.intGoalsAgainst }}</td>
           <td>{{ club.intPoints }}</td>
         </tr>
+        <tr v-for="n in newlyAddedRows" :key="'skeleton-' + n">
+          <td v-for="indx in 12" :key="indx" :class="['skeleton-cell', { 'larger-cell': indx === 2 || indx === 3 }]">
+            <SkeletonCell />
+          </td>
+        </tr>
         </tbody>
       </table>
-      <!-- Conditionally render the SkeletonLoader while data is loading -->
-      <SkeletonLoader v-else />
     </Transition>
     <!-- Conditionally render the "Load more" button -->
-    <button v-if="clubs.length > itemsToShow && showTable" @click="loadMore">Load more</button>
+    <button v-if="clubs.length > itemsToShow && !isLoading" @click="loadMore">Load more</button>
   </div>
 </template>
 
 <script>
 
-import { fetchClubRatings } from '@/api/api.js';
-import SkeletonLoader from '@/components/SkeletonLoader';
+import { fetchClubRatings } from '@/services/api.js';
+import SkeletonCell from '@/components/SkeletonCell';
+import mockTeamPlayers from '@/services/mockTeamPlayers';
+import VTooltip from 'v-tooltip';
+
 
 export default {
   components: {
-    SkeletonLoader, // Register the SkeletonLoader component
+    SkeletonCell,
+  },
+  directives: {
+    tooltip: VTooltip,
   },
   data() {
     return {
       clubs: [],
       itemsToShow: 5, // Number of items to display initially
       itemsToLoad: 3, // Number of items to load when clicking "Load more"
-      showTable: false, // Initially hide the table
+      isLoading: true, // Initially hide the table
+      newlyAddedRows: 0, // track if rows where added
+      playersInTooltip: [],
+      isTooltipVisible: false,
     };
   },
   mounted() {
@@ -80,14 +134,35 @@ export default {
         this.clubs = await fetchClubRatings();
         // Introduce a slight delay before showing the table
         setTimeout(() => {
-          this.showTable = true;
+          this.isLoading = false;
         }, 1000);
       } catch (error) {
         console.error('Error fetching club ratings:', error);
       }
     },
     loadMore() {
-      this.itemsToShow += this.itemsToLoad;
+      // Update the number of newly added rows
+      this.newlyAddedRows = this.itemsToLoad;
+
+      // Introduce a slight delay before showing the result
+      setTimeout(() => {
+        this.itemsToShow += this.itemsToLoad;
+        this.newlyAddedRows = 0; // Reset the newly added rows count
+      }, 1000);
+    },
+    tooltipConfig(teamId) {
+      console.log(teamId);
+      if (this.isTooltipVisible) {
+        // Retrieve player names based on teamId
+        const playerNames = mockTeamPlayers[teamId] || [];
+        console.log(playerNames);
+        return {
+          content: playerNames.join(', '),
+          delay: 200,
+          placement: 'top',
+        };
+      }
+      return { content: '' };
     },
   },
 };
@@ -108,7 +183,7 @@ export default {
 
 .ratings-container{
   position: relative;
-  max-width: 600px;
+  max-width: 800px;
   margin: 0 auto;
 }
 
@@ -119,6 +194,55 @@ export default {
 .fade-enter, .fade-leave-to /* .fade-leave-active in <2.1.8 */ {
   opacity: 0;
 }
+
+.ratings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 25px 0;
+  font-size: 0.9em;
+  font-family: sans-serif;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+}
+
+.ratings-table thead tr {
+  background-color: #009879;
+  color: #ffffff;
+  text-align: left;
+}
+
+.ratings-table th,
+.ratings-table td {
+  padding: 12px 15px;
+  width: calc(100% / 12);
+  height: 40px;
+  text-align: left;
+}
+
+.ratings-table td.larger-cell,
+.ratings-table th.larger-cell{
+  width: calc((100% / 12) * 4);
+}
+.ratings-table tbody tr {
+  border-bottom: 1px solid #dddddd;
+}
+
+.ratings-table tbody tr:nth-of-type(even) {
+  background-color: #f3f3f3;
+}
+
+.ratings-table tbody tr:last-of-type {
+  border-bottom: 2px solid #009879;
+}
+
+.tooltip {
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 10px;
+  z-index: 999;
+}
+
 /*
 	Max width before this PARTICULAR table gets nasty.
 	This query will take effect for any screen smaller than 760px and also iPads specifically.
